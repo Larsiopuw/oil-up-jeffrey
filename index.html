@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>Oil up Jeffrey</title>
+<link rel="icon" type="image/png" href="favicon.png">
+
+<style>
+html, body, * { cursor: none !important; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background: url("background.png") no-repeat center center fixed;
+  background-size: cover;
+  user-select: none;
+  overflow: hidden;
+  color: #40e0d0;
+}
+
+h1 { color: #40e0d0; }
+
+#score {
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+#character {
+  width: 300px;
+  margin-top: 60px;
+  transition: transform 0.08s linear;
+}
+
+#brush {
+  position: absolute;
+  width: 100px;
+  pointer-events: none;
+  z-index: 999;
+  transition: transform 0.1s ease;
+}
+
+.droplet {
+  position: absolute;
+  width: 50px;
+  opacity: 0.95;
+  pointer-events: none;
+  z-index: 998;
+}
+
+#credit {
+  position: fixed;
+  bottom: 12px;
+  width: 100%;
+  text-align: center;
+  font-size: 14px;
+}
+</style>
+</head>
+
+<body>
+
+<h1>Oil up Jeffrey</h1>
+
+<img id="character" src="normal.png" draggable="false">
+<p id="score">Score: 0 | Best: 0</p>
+
+<img id="brush" src="brush.png">
+<div id="credit">Made by Larsiopuw</div>
+
+<audio id="brushSound" src="brush.mp3"></audio>
+<audio id="loseSound" src="lose.mp3"></audio>
+<audio id="lookSound" src="look.mp3"></audio>
+
+<script>
+// ===== Cursor =====
+function hideCursor() {
+  document.body.style.cursor = "none";
+  requestAnimationFrame(hideCursor);
+}
+hideCursor();
+
+document.addEventListener("selectstart", e => e.preventDefault());
+document.addEventListener("dragstart", e => e.preventDefault());
+
+// ===== STATE =====
+let score = 0;
+let highscore = parseInt(localStorage.getItem("highscore")) || 0;
+let gameOver = false;
+let looking = false;
+let reactionWindow = false;
+let mouseDown = false;
+let audioUnlocked = false;
+
+// Sound cooldown
+let lastBrushSoundTime = 0;
+
+// Stroke system
+let lastY = null;
+let direction = null;
+let strokeProgress = 0;
+let lastStrokeTime = 0;
+
+const STROKE_DISTANCE = 140;
+const MIN_MOVE = 3;
+const MIN_STROKE_TIME = 180;
+
+// Look system
+let strokesSinceLastLook = 0;
+let nextLookAt = getNextLook();
+let lookCooldown = false;
+
+function getNextLook() {
+  return Math.floor(Math.random() * 5) + 8;
+}
+
+// Elements
+const character = document.getElementById("character");
+const scoreText = document.getElementById("score");
+const brush = document.getElementById("brush");
+
+const brushSound = document.getElementById("brushSound");
+const loseSound = document.getElementById("loseSound");
+const lookSound = document.getElementById("lookSound");
+
+scoreText.textContent = "Score: 0 | Best: " + highscore;
+
+// Unlock audio
+document.addEventListener("click", () => audioUnlocked = true);
+
+// Mouse movement
+const offset = 50;
+
+document.addEventListener("mousemove", (e) => {
+  brush.style.left = (e.pageX - offset) + "px";
+  brush.style.top = (e.pageY - offset) + "px";
+  checkBrushing(e.clientX, e.clientY);
+});
+
+// Mouse input
+document.addEventListener("mousedown", (e) => {
+  if (e.button === 0) {
+    mouseDown = true;
+    brush.style.transform = "rotate(-20deg) scale(0.9)";
+  }
+});
+
+document.addEventListener("mouseup", (e) => {
+  if (e.button === 0) {
+    mouseDown = false;
+    brush.style.transform = "rotate(0deg) scale(1)";
+  }
+});
+
+window.addEventListener("mouseup", () => {
+  mouseDown = false;
+});
+
+// ===== MAIN =====
+function checkBrushing(x, y) {
+  if (gameOver || !audioUnlocked) return;
+
+  const rect = character.getBoundingClientRect();
+  const inside = x > rect.left && x < rect.right && y > rect.top && y < rect.bottom;
+
+  const now = Date.now();
+
+  if (!inside) {
+    lastY = null;
+    character.style.transform = "rotate(0deg)";
+    return;
+  }
+
+  // 🔥 Bewegung immer prüfen (für Game Over)
+  if (lastY !== null && Math.abs(y - lastY) > MIN_MOVE) {
+    if (looking && !reactionWindow) {
+      triggerGameOver();
+      return;
+    }
+  }
+
+  // ❗ Nur fürs Bürsten gedrückt nötig
+  if (!mouseDown) {
+    lastY = y;
+    return;
+  }
+
+  if (lastY !== null && Math.abs(y - lastY) > MIN_MOVE) {
+    let delta = y - lastY;
+
+    let tilt = Math.max(-10, Math.min(10, delta * 0.25));
+    character.style.transform = `rotate(${tilt}deg)`;
+
+    let newDir = delta > 0 ? "down" : "up";
+
+    if (direction === null) direction = newDir;
+
+    if (newDir === direction) {
+      strokeProgress += Math.abs(delta);
+    } else {
+      let duration = now - lastStrokeTime;
+
+      if (strokeProgress > STROKE_DISTANCE && duration > MIN_STROKE_TIME) {
+        score++;
+
+        if (score > highscore) {
+          highscore = score;
+          localStorage.setItem("highscore", highscore);
+        }
+
+        scoreText.textContent = "Score: " + score + " | Best: " + highscore;
+
+        if (now - lastBrushSoundTime > 90) {
+          brushSound.currentTime = 0;
+          brushSound.play().catch(()=>{});
+          lastBrushSoundTime = now;
+        }
+
+        // droplets
+        for (let i = 0; i < 2 + Math.floor(Math.random()*2); i++) {
+          spawnDroplet(
+            brush.offsetLeft + Math.random()*40,
+            brush.offsetTop + Math.random()*40
+          );
+        }
+
+        strokesSinceLastLook++;
+
+        if (strokesSinceLastLook >= nextLookAt && !looking && !lookCooldown) {
+          triggerLook();
+          strokesSinceLastLook = 0;
+          nextLookAt = getNextLook();
+
+          lookCooldown = true;
+          setTimeout(() => lookCooldown = false, 2500);
+        }
+
+        lastStrokeTime = now;
+      }
+
+      direction = newDir;
+      strokeProgress = 0;
+    }
+  }
+
+  lastY = y;
+}
+
+// DROPLETS
+function spawnDroplet(x, y) {
+  const d = document.createElement("img");
+  d.src = "droplet.png";
+  d.className = "droplet";
+  document.body.appendChild(d);
+
+  let posY = y;
+  function fall() {
+    posY += 0.8;
+    d.style.left = x + "px";
+    d.style.top = posY + "px";
+    if (posY < window.innerHeight) requestAnimationFrame(fall);
+    else d.remove();
+  }
+  fall();
+}
+
+// GAME OVER
+function triggerGameOver() {
+  gameOver = true;
+  looking = true;
+  character.src = "looking.png";
+
+  loseSound.currentTime = 0;
+  loseSound.play().catch(()=>{});
+
+  scoreText.textContent = "You were oiled up by Jeffrey. Click here to restart.";
+  document.addEventListener("click", restartGame, { once: true });
+}
+
+// RESTART
+function restartGame() {
+  loseSound.pause(); loseSound.currentTime = 0;
+  lookSound.pause(); lookSound.currentTime = 0;
+  brushSound.pause(); brushSound.currentTime = 0;
+
+  score = 0;
+  gameOver = false;
+  looking = false;
+
+  strokesSinceLastLook = 0;
+  nextLookAt = getNextLook();
+  lookCooldown = false;
+
+  lastY = null;
+  direction = null;
+  strokeProgress = 0;
+
+  character.style.transform = "rotate(0deg)";
+  character.src = "normal.png";
+
+  scoreText.textContent = "Score: 0 | Best: " + highscore;
+}
+
+// LOOK
+function triggerLook() {
+  looking = true;
+  reactionWindow = true;
+
+  character.src = "looking.png";
+
+  lookSound.currentTime = 0;
+  lookSound.play().catch(()=>{});
+
+  setTimeout(() => reactionWindow = false, 300);
+
+  setTimeout(() => {
+    if (!gameOver) {
+      looking = false;
+      character.src = "normal.png";
+    }
+  }, 3000);
+}
+</script>
+
+</body>
+</html>
