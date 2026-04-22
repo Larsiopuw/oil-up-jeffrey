@@ -19,6 +19,7 @@ body {
   user-select: none;
   overflow: hidden;
   color: #40e0d0;
+  touch-action: none; /* 🔥 WICHTIG für Mobile */
 }
 
 h1 { color: #40e0d0; }
@@ -26,7 +27,6 @@ h1 { color: #40e0d0; }
 #score {
   font-size: 28px;
   font-weight: 600;
-  letter-spacing: 0.5px;
 }
 
 #character {
@@ -95,10 +95,8 @@ let reactionWindow = false;
 let mouseDown = false;
 let audioUnlocked = false;
 
-// Sound cooldown
 let lastBrushSoundTime = 0;
 
-// Stroke system
 let lastY = null;
 let direction = null;
 let strokeProgress = 0;
@@ -108,7 +106,6 @@ const STROKE_DISTANCE = 140;
 const MIN_MOVE = 3;
 const MIN_STROKE_TIME = 180;
 
-// Look system
 let strokesSinceLastLook = 0;
 let nextLookAt = getNextLook();
 let lookCooldown = false;
@@ -128,34 +125,37 @@ const lookSound = document.getElementById("lookSound");
 
 scoreText.textContent = "Score: 0 | Best: " + highscore;
 
-// Unlock audio
-document.addEventListener("click", () => audioUnlocked = true);
+// ===== POINTER SYSTEM (🔥 FIX) =====
 
-// Mouse movement
-const offset = 50;
+function moveBrush(x, y) {
+  const offset = 50;
 
-document.addEventListener("mousemove", (e) => {
-  brush.style.left = (e.pageX - offset) + "px";
-  brush.style.top = (e.pageY - offset) + "px";
-  checkBrushing(e.clientX, e.clientY);
+  brush.style.left = (x - offset) + "px";
+  brush.style.top = (y - offset) + "px";
+
+  checkBrushing(x, y);
+}
+
+document.addEventListener("pointerdown", (e) => {
+  if (e.pointerType === "mouse" && e.button !== 0) return;
+
+  mouseDown = true;
+  audioUnlocked = true;
+
+  brush.style.transform = "rotate(-20deg) scale(0.9)";
+  moveBrush(e.clientX, e.clientY);
 });
 
-// Mouse input
-document.addEventListener("mousedown", (e) => {
-  if (e.button === 0) {
-    mouseDown = true;
-    brush.style.transform = "rotate(-20deg) scale(0.9)";
-  }
+document.addEventListener("pointermove", (e) => {
+  moveBrush(e.clientX, e.clientY);
 });
 
-document.addEventListener("mouseup", (e) => {
-  if (e.button === 0) {
-    mouseDown = false;
-    brush.style.transform = "rotate(0deg) scale(1)";
-  }
+document.addEventListener("pointerup", () => {
+  mouseDown = false;
+  brush.style.transform = "rotate(0deg) scale(1)";
 });
 
-window.addEventListener("mouseup", () => {
+document.addEventListener("pointercancel", () => {
   mouseDown = false;
 });
 
@@ -174,7 +174,7 @@ function checkBrushing(x, y) {
     return;
   }
 
-  // 🔥 Bewegung immer prüfen (für Game Over)
+  // 👀 Game Over check (immer)
   if (lastY !== null && Math.abs(y - lastY) > MIN_MOVE) {
     if (looking && !reactionWindow) {
       triggerGameOver();
@@ -182,7 +182,7 @@ function checkBrushing(x, y) {
     }
   }
 
-  // ❗ Nur fürs Bürsten gedrückt nötig
+  // ❗ Nur bürsten wenn gedrückt
   if (!mouseDown) {
     lastY = y;
     return;
@@ -249,7 +249,7 @@ function checkBrushing(x, y) {
   lastY = y;
 }
 
-// DROPLETS
+// droplets
 function spawnDroplet(x, y) {
   const d = document.createElement("img");
   d.src = "droplet.png";
@@ -267,7 +267,7 @@ function spawnDroplet(x, y) {
   fall();
 }
 
-// GAME OVER
+// game over
 function triggerGameOver() {
   gameOver = true;
   looking = true;
@@ -277,10 +277,10 @@ function triggerGameOver() {
   loseSound.play().catch(()=>{});
 
   scoreText.textContent = "You were oiled up by Jeffrey. Click here to restart.";
-  document.addEventListener("click", restartGame, { once: true });
+  document.addEventListener("pointerdown", restartGame, { once: true });
 }
 
-// RESTART
+// restart
 function restartGame() {
   loseSound.pause(); loseSound.currentTime = 0;
   lookSound.pause(); lookSound.currentTime = 0;
@@ -304,7 +304,7 @@ function restartGame() {
   scoreText.textContent = "Score: 0 | Best: " + highscore;
 }
 
-// LOOK
+// look
 function triggerLook() {
   looking = true;
   reactionWindow = true;
