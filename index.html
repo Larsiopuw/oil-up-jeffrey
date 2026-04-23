@@ -10,29 +10,39 @@
 <style>
 html, body, * { cursor: none !important; }
 
+* {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 body {
   margin: 0;
   font-family: Arial, sans-serif;
   text-align: center;
-  background: url("background.png") no-repeat center center fixed;
+  background: url("background.png") no-repeat center center;
   background-size: cover;
-  user-select: none;
+  -webkit-touch-callout: none;
   overflow: hidden;
+  height: 100vh;
   color: #40e0d0;
-  touch-action: none; /* 🔥 WICHTIG für Mobile */
+  touch-action: none;
 }
 
 h1 { color: #40e0d0; }
 
 #score {
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 30px;
+  font-weight: 700;
 }
 
 #character {
   width: 300px;
-  margin-top: 60px;
+  height: 300px;
+  object-fit: contain;
+  display: block;
+  margin: 60px auto 0 auto;
   transition: transform 0.08s linear;
+  will-change: transform;
 }
 
 #brush {
@@ -41,6 +51,7 @@ h1 { color: #40e0d0; }
   pointer-events: none;
   z-index: 999;
   transition: transform 0.1s ease;
+  will-change: transform;
 }
 
 .droplet {
@@ -51,12 +62,69 @@ h1 { color: #40e0d0; }
   z-index: 998;
 }
 
+.confetti {
+  position: absolute;
+  width: 34px;
+  pointer-events: none;
+  z-index: 900;
+}
+
 #credit {
   position: fixed;
   bottom: 12px;
   width: 100%;
   text-align: center;
   font-size: 14px;
+}
+
+#highscorePopup {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 34px;
+  font-weight: bold;
+  color: #40e0d0;
+  opacity: 0;
+  transition: 0.3s;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+@keyframes shake {
+  0% { transform: translate(0px, 0px); }
+  25% { transform: translate(6px, -6px); }
+  50% { transform: translate(-6px, 6px); }
+  75% { transform: translate(6px, 6px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+.shake {
+  animation: shake 0.25s;
+}
+
+#shareBtn {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  padding: 10px 14px;
+  background: #40e0d0;
+  color: black;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+#resetBtn {
+  position: fixed;
+  top: 60px;
+  right: 10px;
+  padding: 10px 14px;
+  background: #ff4d4d;
+  color: white;
+  font-weight: bold;
+  border-radius: 8px;
+  cursor: pointer;
 }
 </style>
 </head>
@@ -65,8 +133,13 @@ h1 { color: #40e0d0; }
 
 <h1>Oil up Jeffrey</h1>
 
+<div id="shareBtn">Share</div>
+<div id="resetBtn">Reset</div>
+
 <img id="character" src="normal.png" draggable="false">
 <p id="score">Score: 0 | Best: 0</p>
+
+<div id="highscorePopup"></div>
 
 <img id="brush" src="brush.png">
 <div id="credit">Made by Larsiopuw</div>
@@ -74,21 +147,15 @@ h1 { color: #40e0d0; }
 <audio id="brushSound" src="brush.mp3"></audio>
 <audio id="loseSound" src="lose.mp3"></audio>
 <audio id="lookSound" src="look.mp3"></audio>
+<audio id="highscoreSound" src="highscore.mp3"></audio>
 
 <script>
-// ===== Cursor =====
-function hideCursor() {
-  document.body.style.cursor = "none";
-  requestAnimationFrame(hideCursor);
-}
-hideCursor();
-
-document.addEventListener("selectstart", e => e.preventDefault());
-document.addEventListener("dragstart", e => e.preventDefault());
 
 // ===== STATE =====
 let score = 0;
 let highscore = parseInt(localStorage.getItem("highscore")) || 0;
+let isNewHighscore = false;
+
 let gameOver = false;
 let looking = false;
 let reactionWindow = false;
@@ -114,30 +181,67 @@ function getNextLook() {
   return Math.floor(Math.random() * 5) + 8;
 }
 
-// Elements
+// ===== ELEMENTS =====
 const character = document.getElementById("character");
 const scoreText = document.getElementById("score");
 const brush = document.getElementById("brush");
+const popup = document.getElementById("highscorePopup");
 
 const brushSound = document.getElementById("brushSound");
 const loseSound = document.getElementById("loseSound");
 const lookSound = document.getElementById("lookSound");
+const highscoreSound = document.getElementById("highscoreSound");
 
 scoreText.textContent = "Score: 0 | Best: " + highscore;
 
-// ===== POINTER SYSTEM (🔥 FIX) =====
+// 🔊 Audio Unlock
+let audioReady = false;
+function unlockAudio() {
+  if (audioReady) return;
+  [brushSound, loseSound, lookSound, highscoreSound].forEach(a => {
+    a.volume = 0;
+    a.play().then(() => {
+      a.pause();
+      a.currentTime = 0;
+      a.volume = 1;
+    }).catch(()=>{});
+  });
+  audioReady = true;
+}
 
+// 🔁 RESET
+document.getElementById("resetBtn").onclick = () => {
+  if (!confirm("Reset your highscore?")) return;
+
+  localStorage.removeItem("highscore");
+  highscore = 0;
+
+  scoreText.textContent = "Score: " + score + " | Best: 0";
+
+  popup.textContent = "HIGHSCORE RESET";
+  popup.style.opacity = 1;
+
+  setTimeout(() => popup.style.opacity = 0, 1000);
+};
+
+// 📤 SHARE
+document.getElementById("shareBtn").onclick = () => {
+  const text = `I oiled up Jeffrey ${highscore} times in 'Oil up Jeffrey' 😭 Can you beat that? https://jeffrey-epstein.fun`;
+  window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`);
+};
+
+// ===== POINTER =====
 function moveBrush(x, y) {
   const offset = 50;
-
   brush.style.left = (x - offset) + "px";
   brush.style.top = (y - offset) + "px";
-
   checkBrushing(x, y);
 }
 
 document.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "mouse" && e.button !== 0) return;
+
+  unlockAudio();
 
   mouseDown = true;
   audioUnlocked = true;
@@ -174,7 +278,6 @@ function checkBrushing(x, y) {
     return;
   }
 
-  // 👀 Game Over check (immer)
   if (lastY !== null && Math.abs(y - lastY) > MIN_MOVE) {
     if (looking && !reactionWindow) {
       triggerGameOver();
@@ -182,7 +285,6 @@ function checkBrushing(x, y) {
     }
   }
 
-  // ❗ Nur bürsten wenn gedrückt
   if (!mouseDown) {
     lastY = y;
     return;
@@ -209,6 +311,7 @@ function checkBrushing(x, y) {
         if (score > highscore) {
           highscore = score;
           localStorage.setItem("highscore", highscore);
+          isNewHighscore = true;
         }
 
         scoreText.textContent = "Score: " + score + " | Best: " + highscore;
@@ -219,7 +322,6 @@ function checkBrushing(x, y) {
           lastBrushSoundTime = now;
         }
 
-        // droplets
         for (let i = 0; i < 2 + Math.floor(Math.random()*2); i++) {
           spawnDroplet(
             brush.offsetLeft + Math.random()*40,
@@ -233,7 +335,6 @@ function checkBrushing(x, y) {
           triggerLook();
           strokesSinceLastLook = 0;
           nextLookAt = getNextLook();
-
           lookCooldown = true;
           setTimeout(() => lookCooldown = false, 2500);
         }
@@ -249,7 +350,7 @@ function checkBrushing(x, y) {
   lastY = y;
 }
 
-// droplets
+// 💧 DROPLETS
 function spawnDroplet(x, y) {
   const d = document.createElement("img");
   d.src = "droplet.png";
@@ -257,38 +358,102 @@ function spawnDroplet(x, y) {
   document.body.appendChild(d);
 
   let posY = y;
+
   function fall() {
-    posY += 0.8;
+    posY += 0.6;
     d.style.left = x + "px";
     d.style.top = posY + "px";
+
     if (posY < window.innerHeight) requestAnimationFrame(fall);
     else d.remove();
   }
+
   fall();
 }
 
-// game over
+// 🎉 CONFETTI (BALANCED)
+function spawnConfettiFromText() {
+  const rect = popup.getBoundingClientRect();
+  const screenWidth = window.innerWidth;
+
+  for (let i = 0; i < 60; i++) {
+    const c = document.createElement("img");
+    c.src = "confetti.png";
+    c.className = "confetti";
+
+    const size = 30 + Math.random() * 25;
+    c.style.width = size + "px";
+
+    document.body.appendChild(c);
+
+    let centerX = rect.left + rect.width / 2;
+    let posX = centerX + (Math.random() - 0.5) * screenWidth * 0.9;
+    let posY = rect.top + rect.height / 2 + (Math.random() - 0.5) * 80;
+
+    let velocityX = (Math.random() - 0.5) * 12;
+    let velocityY = -(Math.random() * 6 + 2);
+
+    let fallSpeed = 0.6;
+
+    function animate() {
+      velocityX *= 0.94;
+      velocityY *= 0.94;
+
+      posX += velocityX;
+      posY += velocityY;
+      posY += fallSpeed;
+
+      c.style.left = posX + "px";
+      c.style.top = posY + "px";
+
+      if (posY < window.innerHeight) requestAnimationFrame(animate);
+      else c.remove();
+    }
+
+    animate();
+  }
+}
+
+// ===== GAME OVER =====
 function triggerGameOver() {
   gameOver = true;
   looking = true;
-  character.src = "looking.png";
+
+  character.src = "caught.png";
+
+  document.body.classList.add("shake");
+  setTimeout(() => document.body.classList.remove("shake"), 250);
 
   loseSound.currentTime = 0;
   loseSound.play().catch(()=>{});
+
+  if (isNewHighscore) {
+    popup.textContent = "NEW HIGHSCORE: " + highscore;
+    popup.style.opacity = 1;
+
+    highscoreSound.currentTime = 0;
+    highscoreSound.play().catch(()=>{});
+
+    spawnConfettiFromText();
+  }
 
   scoreText.textContent = "You were oiled up by Jeffrey. Click here to restart.";
   document.addEventListener("pointerdown", restartGame, { once: true });
 }
 
-// restart
+// ===== RESTART =====
 function restartGame() {
   loseSound.pause(); loseSound.currentTime = 0;
   lookSound.pause(); lookSound.currentTime = 0;
   brushSound.pause(); brushSound.currentTime = 0;
+  highscoreSound.pause(); highscoreSound.currentTime = 0;
 
   score = 0;
   gameOver = false;
   looking = false;
+  isNewHighscore = false;
+
+  popup.style.opacity = 0;
 
   strokesSinceLastLook = 0;
   nextLookAt = getNextLook();
@@ -304,7 +469,7 @@ function restartGame() {
   scoreText.textContent = "Score: 0 | Best: " + highscore;
 }
 
-// look
+// ===== LOOK =====
 function triggerLook() {
   looking = true;
   reactionWindow = true;
@@ -323,6 +488,7 @@ function triggerLook() {
     }
   }, 3000);
 }
+
 </script>
 
 </body>
