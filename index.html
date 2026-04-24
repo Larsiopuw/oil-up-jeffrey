@@ -217,6 +217,7 @@ scoreText.textContent = "Score: 0 | Best: " + highscore;
 
 // 🔊 Audio Unlock
 let audioReady = false;
+let firstAudioArmDone = false;
 
 function getAudioContext() {
   if (audioContext) return audioContext;
@@ -310,6 +311,35 @@ function unlockAudio() {
   });
 
   audioReady = true;
+}
+
+function armFirstAudioOnIPad() {
+  if (firstAudioArmDone) return;
+
+  firstAudioArmDone = true;
+
+  brushSound.muted = true;
+  brushSound.volume = 0;
+  brushSound.currentTime = 0;
+
+  const playPromise = brushSound.play();
+
+  if (playPromise && typeof playPromise.then === "function") {
+    playPromise.then(() => {
+      brushSound.pause();
+      brushSound.currentTime = 0;
+      brushSound.muted = false;
+      brushSound.volume = 1;
+    }).catch(() => {
+      brushSound.muted = false;
+      brushSound.volume = 1;
+    });
+  } else {
+    brushSound.pause();
+    brushSound.currentTime = 0;
+    brushSound.muted = false;
+    brushSound.volume = 1;
+  }
 }
 
 function playGameSound(audio, name) {
@@ -426,6 +456,7 @@ document.addEventListener("pointerdown", (e) => {
   if (e.pointerType === "mouse" && e.button !== 0) return;
 
   unlockAudio();
+  armFirstAudioOnIPad();
   loadAudioBuffers();
 
   mouseDown = true;
