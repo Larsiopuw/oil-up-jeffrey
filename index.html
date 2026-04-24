@@ -144,10 +144,10 @@ h1 { color: #40e0d0; }
 <img id="brush" src="brush.png">
 <div id="credit">Made by Larsiopuw</div>
 
-<audio id="brushSound" src="brush.mp3"></audio>
-<audio id="loseSound" src="lose.mp3"></audio>
-<audio id="lookSound" src="look.mp3"></audio>
-<audio id="highscoreSound" src="highscore.mp3"></audio>
+<audio id="brushSound" src="brush.mp3" preload="auto" playsinline webkit-playsinline></audio>
+<audio id="loseSound" src="lose.mp3" preload="auto" playsinline webkit-playsinline></audio>
+<audio id="lookSound" src="look.mp3" preload="auto" playsinline webkit-playsinline></audio>
+<audio id="highscoreSound" src="highscore.mp3" preload="auto" playsinline webkit-playsinline></audio>
 
 <script>
 
@@ -163,6 +163,17 @@ let mouseDown = false;
 let audioUnlocked = false;
 
 let lastBrushSoundTime = 0;
+
+let audioContext = null;
+let audioBuffers = {};
+let audioBuffersLoading = false;
+
+const audioFiles = {
+  brush: "brush.mp3",
+  lose: "lose.mp3",
+  look: "look.mp3",
+  highscore: "highscore.mp3"
+};
 
 let lastY = null;
 let direction = null;
@@ -197,22 +208,143 @@ const loseSound = document.getElementById("loseSound");
 const lookSound = document.getElementById("lookSound");
 const highscoreSound = document.getElementById("highscoreSound");
 
+const gameSounds = [brushSound, loseSound, lookSound, highscoreSound];
+
 scoreText.textContent = "Score: 0 | Best: " + highscore;
 
 // 🔊 Audio Unlock
 let audioReady = false;
+
+function getAudioContext() {
+  if (audioContext) return audioContext;
+
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextClass) return null;
+
+  audioContext = new AudioContextClass();
+  return audioContext;
+}
+
+function playSilentUnlockSound(ctx) {
+  const buffer = ctx.createBuffer(1, 1, 22050);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(0);
+}
+
+function decodeAudioData(ctx, arrayBuffer) {
+  return new Promise((resolve, reject) => {
+    const result = ctx.decodeAudioData(arrayBuffer, resolve, reject);
+
+    if (result && typeof result.then === "function") {
+      result.then(resolve).catch(reject);
+    }
+  });
+}
+
+function loadAudioBuffers() {
+  if (audioBuffersLoading) return;
+
+  const ctx = getAudioContext();
+  if (!ctx || !window.fetch) return;
+
+  audioBuffersLoading = true;
+
+  Object.keys(audioFiles).forEach(name => {
+    fetch(audioFiles[name])
+      .then(response => response.arrayBuffer())
+      .then(arrayBuffer => decodeAudioData(ctx, arrayBuffer))
+      .then(buffer => {
+        audioBuffers[name] = buffer;
+      })
+      .catch(()=>{});
+  });
+}
+
 function unlockAudio() {
-  if (audioReady) return;
-  [brushSound, loseSound, lookSound, highscoreSound].forEach(a => {
+  if (audioReady && (!audioContext || audioContext.state === "running")) return;
+
+  const ctx = getAudioContext();
+
+  if (ctx) {
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(()=>{});
+    }
+
+    try {
+      playSilentUnlockSound(ctx);
+    } catch(e) {}
+
+    loadAudioBuffers();
+  }
+
+  gameSounds.forEach(a => {
+    const previousVolume = a.volume || 1;
+
+    a.setAttribute("playsinline", "");
+    a.setAttribute("webkit-playsinline", "");
+    a.preload = "auto";
+    a.load();
+    a.muted = true;
     a.volume = 0;
-    a.play().then(() => {
+
+    const playPromise = a.play();
+
+    if (playPromise && typeof playPromise.then === "function") {
+      playPromise.then(() => {
+        a.pause();
+        a.currentTime = 0;
+        a.muted = false;
+        a.volume = previousVolume;
+      }).catch(() => {
+        a.muted = false;
+        a.volume = previousVolume;
+      });
+    } else {
       a.pause();
       a.currentTime = 0;
-      a.volume = 1;
-    }).catch(()=>{});
+      a.muted = false;
+      a.volume = previousVolume;
+    }
   });
+
   audioReady = true;
 }
+
+function playGameSound(audio, name) {
+  if (!audioUnlocked) return;
+
+  const ctx = getAudioContext();
+
+  if (ctx) {
+    if (ctx.state === "suspended") {
+      ctx.resume().catch(()=>{});
+    }
+
+    if (audioBuffers[name]) {
+      try {
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffers[name];
+        source.connect(ctx.destination);
+        source.start(0);
+        return;
+      } catch(e) {}
+    }
+  }
+
+  audio.muted = false;
+  audio.volume = 1;
+  audio.pause();
+  audio.currentTime = 0;
+  audio.play().catch(() => {
+    audioReady = false;
+  });
+}
+
+document.addEventListener("touchstart", unlockAudio, { passive: true });
+document.addEventListener("touchend", unlockAudio, { passive: true });
+document.addEventListener("click", unlockAudio);
 
 // 🔁 RESET
 document.getElementById("resetBtn").onclick = () => {
@@ -322,8 +454,7 @@ function checkBrushing(x, y) {
         scoreText.textContent = "Score: " + score + " | Best: " + highscore;
 
         if (now - lastBrushSoundTime > 90) {
-          brushSound.currentTime = 0;
-          brushSound.play().catch(()=>{});
+          playGameSound(brushSound, "brush");
           lastBrushSoundTime = now;
         }
 
@@ -431,15 +562,13 @@ function triggerGameOver() {
   document.body.classList.add("shake");
   setTimeout(() => document.body.classList.remove("shake"), 250);
 
-  loseSound.currentTime = 0;
-  loseSound.play().catch(()=>{});
+  playGameSound(loseSound, "lose");
 
   if (isNewHighscore) {
     popup.textContent = "NEW HIGHSCORE: " + highscore;
     popup.style.opacity = 1;
 
-    highscoreSound.currentTime = 0;
-    highscoreSound.play().catch(()=>{});
+    playGameSound(highscoreSound, "highscore");
 
     spawnConfettiFromText();
   }
@@ -485,8 +614,7 @@ function triggerLook() {
 
   character.src = "looking.png";
 
-  lookSound.currentTime = 0;
-  lookSound.play().catch(()=>{});
+  playGameSound(lookSound, "look");
 
   setTimeout(() => reactionWindow = false, 300);
 
