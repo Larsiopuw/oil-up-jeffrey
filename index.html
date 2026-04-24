@@ -282,33 +282,12 @@ function unlockAudio() {
   }
 
   gameSounds.forEach(a => {
-    const previousVolume = a.volume || 1;
-
     a.setAttribute("playsinline", "");
     a.setAttribute("webkit-playsinline", "");
     a.preload = "auto";
     a.load();
-    a.muted = true;
-    a.volume = 0;
-
-    const playPromise = a.play();
-
-    if (playPromise && typeof playPromise.then === "function") {
-      playPromise.then(() => {
-        a.pause();
-        a.currentTime = 0;
-        a.muted = false;
-        a.volume = previousVolume;
-      }).catch(() => {
-        a.muted = false;
-        a.volume = previousVolume;
-      });
-    } else {
-      a.pause();
-      a.currentTime = 0;
-      a.muted = false;
-      a.volume = previousVolume;
-    }
+    a.muted = false;
+    a.volume = 1;
   });
 
   audioReady = true;
