@@ -167,6 +167,8 @@ let lastBrushSoundTime = 0;
 let audioContext = null;
 let audioBuffers = {};
 let audioBuffersLoading = false;
+let activeAudioSources = [];
+let activeAudioSourcesByName = {};
 
 const audioFiles = {
   brush: "brush.mp3",
@@ -317,6 +319,8 @@ function playGameSound(audio, name) {
 
   const ctx = getAudioContext();
 
+  stopGameSound(audio, name);
+
   if (ctx) {
     if (ctx.state === "suspended") {
       ctx.resume().catch(()=>{});
@@ -327,6 +331,14 @@ function playGameSound(audio, name) {
         const source = ctx.createBufferSource();
         source.buffer = audioBuffers[name];
         source.connect(ctx.destination);
+        activeAudioSources.push(source);
+        activeAudioSourcesByName[name] = source;
+        source.onended = () => {
+          activeAudioSources = activeAudioSources.filter(s => s !== source);
+          if (activeAudioSourcesByName[name] === source) {
+            delete activeAudioSourcesByName[name];
+          }
+        };
         source.start(0);
         return;
       } catch(e) {}
@@ -340,6 +352,41 @@ function playGameSound(audio, name) {
   audio.play().catch(() => {
     audioReady = false;
   });
+}
+
+function stopGameSound(audio, name) {
+  if (activeAudioSourcesByName[name]) {
+    const source = activeAudioSourcesByName[name];
+
+    try {
+      source.stop(0);
+    } catch(e) {}
+
+    activeAudioSources = activeAudioSources.filter(s => s !== source);
+    delete activeAudioSourcesByName[name];
+  }
+
+  audio.pause();
+
+  try {
+    audio.currentTime = 0;
+  } catch(e) {}
+}
+
+function stopAllGameSounds() {
+  activeAudioSources.forEach(source => {
+    try {
+      source.stop(0);
+    } catch(e) {}
+  });
+
+  activeAudioSources = [];
+  activeAudioSourcesByName = {};
+
+  stopGameSound(brushSound, "brush");
+  stopGameSound(loseSound, "lose");
+  stopGameSound(lookSound, "look");
+  stopGameSound(highscoreSound, "highscore");
 }
 
 document.addEventListener("touchstart", unlockAudio, { passive: true });
@@ -553,6 +600,8 @@ function spawnConfettiFromText() {
 // ===== GAME OVER =====
 function triggerGameOver() {
   clearParticles(); // 🔥 NEU
+  stopGameSound(brushSound, "brush");
+  stopGameSound(lookSound, "look");
 
   gameOver = true;
   looking = true;
@@ -581,10 +630,7 @@ function triggerGameOver() {
 function restartGame() {
   clearParticles(); // 🔥 NEU
 
-  loseSound.pause(); loseSound.currentTime = 0;
-  lookSound.pause(); lookSound.currentTime = 0;
-  brushSound.pause(); brushSound.currentTime = 0;
-  highscoreSound.pause(); highscoreSound.currentTime = 0;
+  stopAllGameSounds();
 
   score = 0;
   gameOver = false;
