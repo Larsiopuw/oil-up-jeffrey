@@ -3,6 +3,8 @@ name: Bug report
 about: Report a problem with the game
 title: "[BUG] "
 labels: bug
+assignees: ''
+
 ---
 
 ## 🐛 Bug description
