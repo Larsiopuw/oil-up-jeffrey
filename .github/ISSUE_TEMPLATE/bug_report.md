@@ -1,10 +1,8 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: ''
-labels: ''
-assignees: ''
-
+about: Report a problem with the game
+title: "[BUG] "
+labels: bug
 ---
 
 ## 🐛 Bug description
